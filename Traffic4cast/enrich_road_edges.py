@@ -21,6 +21,8 @@ class DataEnricher():
 
     buffer_m = 100
 
+    eps = 0.1
+
     crs_reprj = {'london': 27700,
                  'madrid': 2062,
                  'melbourne': 3110
@@ -71,10 +73,11 @@ class DataEnricher():
         }
     }
 
-    def __init__(self, root, city, skip_supersegments: bool = True) -> None:
+    def __init__(self, root, city, skip_supersegments: bool = True, enriched: bool = False) -> None:
         self.root = root
         self.city = city
         self.skip_supersegments = skip_supersegments
+        self.enriched = enriched
 
         self.city_epsg = self.crs_reprj[self.city]
         self.population_file_schema = self.population_file_schemas[self.city]
@@ -82,7 +85,7 @@ class DataEnricher():
     def prepare_inputs_for_processing_stages(self):
 
         df_edges, df_nodes, df_supersegments = load_road_graph(
-            self.root, self.city, skip_supersegments=self.skip_supersegments)
+            self.root, self.city, skip_supersegments=self.skip_supersegments, enriched=self.enriched)
 
         df_edges['num_lanes'] = 1
 
@@ -133,6 +136,7 @@ class DataEnricher():
 
         population_file_path = f'{self.root}/preprocessing_data/population/{self.city}/population.csv'
         population = pd.read_csv(population_file_path)
+
         population = population[population[self.population_file_schema['lat_column']].between(self.city_bounds[1], self.city_bounds[3]) &
                                 population[self.population_file_schema['lon_column']].between(
                                     self.city_bounds[0], self.city_bounds[2])
@@ -149,7 +153,12 @@ class DataEnricher():
             ['u', 'v'])[self.population_file_schema['pop_column']].mean().reset_index(name='mean_pop')
         self.df_edges = self.df_edges.merge(
             mean_population, on=['u', 'v'], how='left')
+
         self.df_edges['mean_pop'].fillna(0, inplace=True)
+
+        if self.city != 'madrid':
+            self.df_edges['mean_pop'] = np.log(
+                np.where(self.df_edges['mean_pop'] == 0, self.eps, self.df_edges['mean_pop']))
 
     def pois_enrichment(self):
 
@@ -170,18 +179,20 @@ class DataEnricher():
                 pois_gdf = pd.concat(
                     [pois_gdf, gdf], axis=0, ignore_index=True)
 
-        print(pois_gdf['pois_class'].value_counts())
         sjoin = gpd.sjoin(self.gdf_edges, pois_gdf, predicate='contains')
         sum_pois = sjoin.groupby(
             ['u', 'v', 'pois_class']).size().reset_index(name='counts')
         sum_pois = sum_pois.pivot(index=['u', 'v'], columns=[
-                                  'pois_class'], values="counts").fillna(0)
+                                  'pois_class'], values="counts")
         sum_pois['pois_total'] = sum_pois.sum(axis=1)
         sum_pois.reset_index(inplace=True)
         self.df_edges = self.df_edges.merge(
             sum_pois, on=['u', 'v'], how='left')
         self.df_edges[list(self.pois.keys())+['pois_total']] = self.df_edges[list(
             self.pois.keys())+['pois_total']].div(self.df_edges['area_km2'], axis=0)
+        self.df_edges.fillna(self.eps, inplace=True)
+        self.df_edges[list(self.pois.keys())+['pois_total']
+                      ] = self.df_edges[list(self.pois.keys())+['pois_total']].apply(np.log)
 
     def land_cover_enrichment(self):
         land_cover_city_dir = f'{self.root}/preprocessing_data/land_cover/{self.city}'
@@ -260,19 +271,20 @@ class DataEnricher():
             self.land_cover_reclassification.keys())] = percentages
 
     def run(self):
-
+        print(f"Start enrichment for {self.city}")
         self.prepare_inputs_for_processing_stages()
+        print("Done inputs")
         self.population_enrichment()
+        print("Done population")
         self.pois_enrichment()
+        print("Done pois")
         self.land_cover_enrichment()
-        object_columns = ['importance', 'highway',
-                          'oneway']
-        non_object_columns = list(
-            set(list(self.df_edges.columns)) - set(object_columns))
-        self.df_edges = self.df_edges[non_object_columns+object_columns]
+        print("Done land cover")
+        self.df_edges.drop(columns=['area_km2'], inplace=True)
         table = pa.Table.from_pandas(self.df_edges)
         pq.write_table(
-            table, f'{self.root}/road_graph/{self.city}/road_edges_enriched.parquet')
+            table, f'{self.root}/road_graph/{self.city}/road_graph_edges_enriched.parquet')
+        print("Done writing")
 
 
 DE = DataEnricher(root, city)
