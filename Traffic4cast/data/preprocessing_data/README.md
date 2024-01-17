@@ -1,4 +1,4 @@
-The preprocessing data structure 
+The preprocessing data structure that should be reproduced in order to run `enrich_road_edges.py`
 ```
 /preprocessing_data
 ├── land_cover
@@ -34,4 +34,5 @@ The preprocessing data structure
         └── population.csv
 ```
 URL for Land Cover datasets: https://glad.umd.edu/dataset/global-land-cover-land-use-v1
+
 URL for Population datasets: https://data.humdata.org/organization/meta?q=population+density&sort=if%28gt%28last_modified%2Creview_date%29%2Clast_modified%2Creview_date
