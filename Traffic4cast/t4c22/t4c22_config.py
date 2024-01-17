@@ -75,7 +75,8 @@ DAY_T_FILTER = Callable[[str, int], bool]
 DF_FILTER = Callable[[pd.DataFrame], pd.DataFrame]
 
 # 6am-10pm all days of the week:
-day_t_filter_weekdays_daytime_only: DAY_T_FILTER = partial(day_t_filter, t_whitelist=set(range(6 * 4, 22 * 4)), weekday_whitelist=set(range(7)))
+day_t_filter_weekdays_daytime_only: DAY_T_FILTER = partial(
+    day_t_filter, t_whitelist=set(range(6 * 4, 22 * 4)), weekday_whitelist=set(range(7)))
 
 
 def day_t_filter_to_df_filter(df: pd.DataFrame, filter: DAY_T_FILTER, tmp_column_name="_included") -> pd.DataFrame:
@@ -91,14 +92,16 @@ def day_t_filter_to_df_filter(df: pd.DataFrame, filter: DAY_T_FILTER, tmp_column
     -------
     """
     assert tmp_column_name not in df.columns
-    df[tmp_column_name] = [filter(day, t) for day, t in zip(df["day"], df["t"])]
+    df[tmp_column_name] = [filter(day, t)
+                           for day, t in zip(df["day"], df["t"])]
     df = df[df[tmp_column_name]]
     del df[tmp_column_name]
     return df
 
 
 # 6am-10pm all days of the week:
-df_filter_weekdays_daytime_only: DF_FILTER = partial(day_t_filter_to_df_filter, filter=day_t_filter_weekdays_daytime_only)
+df_filter_weekdays_daytime_only: DF_FILTER = partial(
+    day_t_filter_to_df_filter, filter=day_t_filter_weekdays_daytime_only)
 
 
 # -----------------------------------------------------------------------------------------------------
@@ -106,10 +109,13 @@ df_filter_weekdays_daytime_only: DF_FILTER = partial(day_t_filter_to_df_filter, 
 # -----------------------------------------------------------------------------------------------------
 
 
-def load_road_graph(basedir: Path, city: str, skip_supersegments: bool = True) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.DataFrame]]:
+def load_road_graph(basedir: Path, city: str, skip_supersegments: bool = True, enriched: bool = True) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.DataFrame]]:
     """Helper for loading edges and nodes data frame from basedir for the given
     city."""
-    fn = basedir / "road_graph" / city / "road_graph_edges.parquet"
+    if enriched:
+        fn = basedir / "road_graph" / city / "road_graph_edges_enriched.parquet"
+    else:
+        fn = basedir / "road_graph" / city / "road_graph_edges.parquet"
     df_edges = pq.read_table(fn).to_pandas()
     edge_records = df_edges.to_dict("records")
     fn = basedir / "road_graph" / city / "road_graph_nodes.parquet"
@@ -142,6 +148,7 @@ def load_inputs(basedir: Path, city, split="train", day: Optional[str] = None, d
     if df_filter is not None:
         df = df_filter(df)
     return df
+
 
 def load_speed(basedir: Path, city, split="train", day: Optional[str] = None, df_filter: DF_FILTER = df_filter_weekdays_daytime_only) -> pd.DataFrame:
     """Helper for loading input data (vehicle counts on.
@@ -180,7 +187,8 @@ def load_cc_labels(
         fn = datadir / f"cc_labels_{day}.parquet"
         df = pq.read_table(fn).to_pandas()
     else:
-        dfs = [pq.read_table(fn).to_pandas() for fn in datadir.rglob("cc_labels*.parquet")]
+        dfs = [pq.read_table(fn).to_pandas()
+               for fn in datadir.rglob("cc_labels*.parquet")]
         df = pd.concat(dfs)
     if df_filter is not None:
         df = df_filter(df)
@@ -204,7 +212,8 @@ def load_eta_labels(basedir: Path, city, split="train", day=None, df_filter: DF_
         fn = datadir / f"eta_labels_{day}.parquet"
         df = pq.read_table(fn).to_pandas()
     else:
-        dfs = [pq.read_table(fn).to_pandas() for fn in datadir.rglob("eta_labels*.parquet")]
+        dfs = [pq.read_table(fn).to_pandas()
+               for fn in datadir.rglob("eta_labels*.parquet")]
         df = pd.concat(dfs)
     if df_filter is not None:
         df = df_filter(df)

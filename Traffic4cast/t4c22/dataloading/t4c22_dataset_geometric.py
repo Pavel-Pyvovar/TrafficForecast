@@ -33,6 +33,7 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
             root: Path,
             city: str,
             edge_attributes=None,
+            enriched: bool = True,
             split: str = "train",
             fill: int = 1,
             normalize: str = "",
@@ -83,6 +84,7 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
             edge_attributes=edge_attributes,
             root=root,
             skip_supersegments=False,
+            enriched=enriched,
             df_filter=partial(day_t_filter_to_df_filter,
                               filter=day_t_filter) if self.day_t_filter is not None else None,
         )
@@ -90,10 +92,10 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
         # TODO most days have even 96 (rolling window over midnight), but probably not necessary because of filtering we do.
         if split == "test":
             num_tests = load_inputs(basedir=self.root, split="test", city=city, day="test", df_filter=None)[
-                            "test_idx"].max() + 1
+                "test_idx"].max() + 1
             self.day_t = [("test", t) for t in range(num_tests)]
         else:
-            # TODO: discard slicing 
+            # TODO: discard slicing
             self.day_t = [(day, t) for day in cc_dates(self.root, city=city, split=self.split) for t in range(4, 96) if
                           self.day_t_filter(day, t)][:32]
         import pickle
@@ -124,7 +126,8 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
                            "madrid": [0.0, 99999.0, 430.7254909879753, 769.3343962046041],
                            "melbourne": [0.0, 11677.0, 172.65683295964914, 217.1803088988486]}
 
-        self.min_volume, self.max_volume, self.mean_volume, self.std = city_statistics[self.city]
+        self.min_volume, self.max_volume, self.mean_volume, self.std = city_statistics[
+            self.city]
 
     def get_statistics(self):
         pass
@@ -148,7 +151,8 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
             lists = self.torch_road_graph_mapping.supersegment_to_edges_mapping[i]
             for edge in lists:
                 index_list[0].append(i)
-                index_list[1].append(self.torch_road_graph_mapping.edge_index_d[edge])
+                index_list[1].append(
+                    self.torch_road_graph_mapping.edge_index_d[edge])
 
         index = torch.LongTensor(index_list)
         val = torch.ones((index.shape[1]), dtype=torch.float)
@@ -165,11 +169,13 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
             lists = self.torch_road_graph_mapping.supersegment_to_edges_mapping[i]
 
             index_list[0].append(i)
-            index_list[1].append(self.torch_road_graph_mapping.node_to_int_mapping[lists[0][0]])
+            index_list[1].append(
+                self.torch_road_graph_mapping.node_to_int_mapping[lists[0][0]])
 
             for edge in lists:
                 index_list[0].append(i)
-                index_list[1].append(self.torch_road_graph_mapping.node_to_int_mapping[edge[1]])
+                index_list[1].append(
+                    self.torch_road_graph_mapping.node_to_int_mapping[edge[1]])
 
         index = torch.LongTensor(index_list)
         val = torch.ones((index.shape[1]), dtype=torch.float)
@@ -195,27 +201,36 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
     def get_edge_attr(self):
 
         # edge_attributes = ["speed_kph", "parsed_maxspeed", "length_meters", "counter_distance", "importance", "highway", "oneway", ]
-        num_importance = torch.max(self.torch_road_graph_mapping.edge_attr[:, 4]).item() + 1
-        num_highway = torch.max(self.torch_road_graph_mapping.edge_attr[:, 5]).item() + 1
-        num_oneway = torch.max(self.torch_road_graph_mapping.edge_attr[:, 6]).item() + 1
+        num_edge_attributes = self.torch_road_graph_mapping.edge_attr.shape[1]
+        num_importance = torch.max(
+            self.torch_road_graph_mapping.edge_attr[:, num_edge_attributes-3]).item() + 1
+        num_highway = torch.max(
+            self.torch_road_graph_mapping.edge_attr[:, num_edge_attributes-2]).item() + 1
+        num_oneway = torch.max(
+            self.torch_road_graph_mapping.edge_attr[:, num_edge_attributes-1]).item() + 1
 
         self.num_importance = num_importance
         self.num_highway = num_highway
         self.num_oneway = num_oneway
 
-        edge_attr = self.torch_road_graph_mapping.edge_attr[:, :4]
-        edge_attr = self.minmax(edge_attr, torch.min(edge_attr, dim=0).values, torch.max(edge_attr, dim=0).values)
+        edge_attr = self.torch_road_graph_mapping.edge_attr[:,
+                                                            :num_edge_attributes-3]
+        edge_attr = self.minmax(edge_attr, torch.min(
+            edge_attr, dim=0).values, torch.max(edge_attr, dim=0).values)
 
-        edge_importance = torch.zeros([edge_attr.shape[0], int(num_importance)], dtype=torch.float)
-        edge_highway = torch.zeros([edge_attr.shape[0], int(num_highway)], dtype=torch.float)
-        edge_oneway = torch.zeros([edge_attr.shape[0], int(num_oneway)], dtype=torch.float)
+        edge_importance = torch.zeros(
+            [edge_attr.shape[0], int(num_importance)], dtype=torch.float)
+        edge_highway = torch.zeros(
+            [edge_attr.shape[0], int(num_highway)], dtype=torch.float)
+        edge_oneway = torch.zeros(
+            [edge_attr.shape[0], int(num_oneway)], dtype=torch.float)
 
         edge_importance[
-            [i for i in range(edge_attr.shape[0])], [int(j) for j in self.torch_road_graph_mapping.edge_attr[:, 4]]] = 1
+            [i for i in range(edge_attr.shape[0])], [int(j) for j in self.torch_road_graph_mapping.edge_attr[:, num_edge_attributes-3]]] = 1
         edge_highway[
-            [i for i in range(edge_attr.shape[0])], [int(j) for j in self.torch_road_graph_mapping.edge_attr[:, 5]]] = 1
+            [i for i in range(edge_attr.shape[0])], [int(j) for j in self.torch_road_graph_mapping.edge_attr[:, num_edge_attributes-2]]] = 1
         edge_oneway[
-            [i for i in range(edge_attr.shape[0])], [int(j) for j in self.torch_road_graph_mapping.edge_attr[:, 6]]] = 1
+            [i for i in range(edge_attr.shape[0])], [int(j) for j in self.torch_road_graph_mapping.edge_attr[:, num_edge_attributes-1]]] = 1
 
         return torch.cat([edge_attr, edge_importance, edge_highway, edge_oneway], dim=1)
 

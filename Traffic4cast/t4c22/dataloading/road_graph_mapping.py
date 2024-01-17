@@ -24,13 +24,14 @@ import pyarrow.parquet as pq
 
 class TorchRoadGraphMapping:
     def __init__(self, city: str, root: Path, df_filter, edge_attributes=None, skip_supersegments: bool = True,
-                 counters_only: bool = False):
-        
+                 counters_only: bool = False, enriched: bool = True):
+
         self.df_filter = df_filter
         self.counters_only = counters_only
 
         # load road graph
-        df_edges, df_nodes, df_supersegments = load_road_graph(root, city, skip_supersegments=skip_supersegments)
+        df_edges, df_nodes, df_supersegments = load_road_graph(
+            root, city, skip_supersegments=skip_supersegments, enriched=enriched)
 
         # `ExternalNodeId = int64 (the osm ids)`
         # `InternalNodeId = int (0,...,num_edges-1)`
@@ -40,8 +41,10 @@ class TorchRoadGraphMapping:
         self.edges = [(r["u"], r["v"]) for r in self.edge_records]
 
         # `nodes: List[ExternalNodeId]`
-        self.noncounter_nodes = [r["node_id"] for r in df_nodes.to_dict("records") if r["counter_info"] == ""]
-        self.counter_nodes = [r["node_id"] for r in df_nodes.to_dict("records") if r["counter_info"] != ""]
+        self.noncounter_nodes = [r["node_id"] for r in df_nodes.to_dict(
+            "records") if r["counter_info"] == ""]
+        self.counter_nodes = [r["node_id"] for r in df_nodes.to_dict(
+            "records") if r["counter_info"] != ""]
         self.nodes = self.counter_nodes + self.noncounter_nodes
 
         # enumerate nodes and edges and create mapping
@@ -61,23 +64,30 @@ class TorchRoadGraphMapping:
             self.edge_index_d[(u, v)] = i
 
         # sanity checking edges and nodes are unique
-        assert len(self.edges) == len(set(self.edges)), (len(self.edges), len(set(self.edges)))
-        assert len(self.nodes) == len(set(self.nodes)), (len(self.nodes), len(set(self.nodes)))
+        assert len(self.edges) == len(set(self.edges)
+                                      ), (len(self.edges), len(set(self.edges)))
+        assert len(self.nodes) == len(set(self.nodes)
+                                      ), (len(self.nodes), len(set(self.nodes)))
 
         # sanity checking edge_index and edge_index_d size coincide with number of edges
         # beware, after accessing
-        assert len(self.edge_index_d) == len(self.edges), (len(self.edge_index_d), len(self.edges))
-        assert self.edge_index.size()[1] == len(self.edges), (self.edge_index.size()[1], len(self.edges))
-        assert self.edge_index.size()[1] == len(self.edge_index_d), (self.edge_index.size()[1], len(self.edge_index_d))
+        assert len(self.edge_index_d) == len(
+            self.edges), (len(self.edge_index_d), len(self.edges))
+        assert self.edge_index.size()[1] == len(
+            self.edges), (self.edge_index.size()[1], len(self.edges))
+        assert self.edge_index.size()[1] == len(
+            self.edge_index_d), (self.edge_index.size()[1], len(self.edge_index_d))
 
         # sanity checking node_to_int_mapping has size number of nodes
-        assert len(self.node_to_int_mapping) == len(self.nodes), (len(self.node_to_int_mapping), len(self.nodes))
+        assert len(self.node_to_int_mapping) == len(
+            self.nodes), (len(self.node_to_int_mapping), len(self.nodes))
 
         # edge_attr
         self.edge_attributes = edge_attributes
         self.edge_attr = None
         if edge_attributes is not None:
-            self.edge_attr = torch.full(size=(len(self.edges), len(self.edge_attributes)), fill_value=float("nan"))
+            self.edge_attr = torch.full(size=(len(self.edges), len(
+                self.edge_attributes)), fill_value=float("nan"))
             highway_dict = {}
             oneway_dict = {}
 
@@ -107,8 +117,10 @@ class TorchRoadGraphMapping:
         # `supersegments_to_edges_mapping: List[List[Tuple[ExternalNodeId,ExternalNodeId]]]`
         self.supersegment_to_edges_mapping = None
         if df_supersegments is not None:
-            self.supersegments = [r["identifier"] for r in df_supersegments.to_dict("records")]
-            self.supersegments_d = {r["identifier"]: i for i, r in enumerate(df_supersegments.to_dict("records"))}
+            self.supersegments = [r["identifier"]
+                                  for r in df_supersegments.to_dict("records")]
+            self.supersegments_d = {r["identifier"]: i for i, r in enumerate(
+                df_supersegments.to_dict("records"))}
             self.supersegment_to_edges_mapping = [[(u, v) for u, v in zip(r["nodes"], r["nodes"][1:])] for r in
                                                   df_supersegments.to_dict("records")]
 
@@ -119,7 +131,8 @@ class TorchRoadGraphMapping:
 
         else:
             infix = "" if day is None else f"_{day}"
-            fn = basedir / "speed_classes" / city / f"speed_classes_{day}.parquet"
+            fn = basedir / "speed_classes" / \
+                city / f"speed_classes_{day}.parquet"
             df = pq.read_table(fn).to_pandas()
             if self.df_filter is not None:
                 df = self.df_filter(df)
@@ -127,16 +140,23 @@ class TorchRoadGraphMapping:
             data = df[(df["day"] == day) & (df["t"] == t)]
             data["volume_class"] = data["volume_class"] - 1
 
-            volume_class = torch.full(size=(len(self.edges),), fill_value=float("nan"))
-            median_speed = torch.full(size=(len(self.edges),), fill_value=float("nan"))
-            max_speed = torch.full(size=(len(self.edges),), fill_value=float("nan"))
+            volume_class = torch.full(
+                size=(len(self.edges),), fill_value=float("nan"))
+            median_speed = torch.full(
+                size=(len(self.edges),), fill_value=float("nan"))
+            max_speed = torch.full(
+                size=(len(self.edges),), fill_value=float("nan"))
 
-            data["edge_index"] = [self.edge_index_d[u, v] for u, v in zip(data["u"], data["v"])]
+            data["edge_index"] = [self.edge_index_d[u, v]
+                                  for u, v in zip(data["u"], data["v"])]
             assert len(data[data["edge_index"] < 0]) == 0
 
-            volume_class[data["edge_index"].values] = torch.tensor(data["volume_class"].values).float()
-            median_speed[data["edge_index"].values] = torch.tensor(data["median_speed_kph"].values).float()
-            max_speed[data["edge_index"].values] = torch.tensor(data["free_flow_kph"].values).float()
+            volume_class[data["edge_index"].values] = torch.tensor(
+                data["volume_class"].values).float()
+            median_speed[data["edge_index"].values] = torch.tensor(
+                data["median_speed_kph"].values).float()
+            max_speed[data["edge_index"].values] = torch.tensor(
+                data["free_flow_kph"].values).float()
 
             return volume_class, median_speed, max_speed
 
@@ -157,7 +177,8 @@ class TorchRoadGraphMapping:
         -------
         Tensor of size (number-of-nodes,4).
         """
-        df_x = load_inputs(basedir, city=city, split=split, day=day, df_filter=self.df_filter)
+        df_x = load_inputs(basedir, city=city, split=split,
+                           day=day, df_filter=self.df_filter)
 
         df_x["node_id"] = df_x["node_id"].astype("int64")
         df_x = df_x.explode("volumes_1h")
@@ -175,12 +196,14 @@ class TorchRoadGraphMapping:
         else:
             data = df_x[(df_x["day"] == day) & (df_x["t"] == t)].copy()
 
-        data["node_index"] = [self.node_to_int_mapping[x] for x in data["node_id"]]
+        data["node_index"] = [self.node_to_int_mapping[x]
+                              for x in data["node_id"]]
 
         # sanity check as defaultdict returns -1 for non-existing node_ids
         assert len(data[data["node_index"] < 0]) == 0
 
-        x[data["node_index"].values, data["slot"].values] = torch.tensor(data["volumes_1h"].values).float()
+        x[data["node_index"].values, data["slot"].values] = torch.tensor(
+            data["volumes_1h"].values).float()
         return x
 
     def load_cc_labels_day_t(self, basedir: Path, city: str, split: str, day: str, t: int, idx: int) -> torch.Tensor:
@@ -233,7 +256,8 @@ class TorchRoadGraphMapping:
         -------
         Float tensor of size (number-of-supersegments,), with supersegment eta and nan if unavailable.
         """
-        df_y = load_eta_labels(basedir, city=city, split=split, day=day, df_filter=self.df_filter)
+        df_y = load_eta_labels(
+            basedir, city=city, split=split, day=day, df_filter=self.df_filter)
         if day == "test":
             data = df_y[(df_y["test_idx"] == idx)]
         else:
@@ -259,7 +283,8 @@ class TorchRoadGraphMapping:
         if len(data[data["cc"] > 0]) > 0:
             data = data[data["cc"] > 0].copy()
             assert len(data) <= len(self.edges)
-            data["edge_index"] = [self.edge_index_d[u, v] for u, v in zip(data["u"], data["v"])]
+            data["edge_index"] = [self.edge_index_d[u, v]
+                                  for u, v in zip(data["u"], data["v"])]
 
             # sanity check as defaultdict returns -1 for non-existing edges
             assert len(data[data["edge_index"] < 0]) == 0
@@ -271,7 +296,8 @@ class TorchRoadGraphMapping:
             # 1 = yellow
             # 2 = red
             data["cc"] = data["cc"] - 1
-            y[data["edge_index"].values] = torch.tensor(data["cc"].values).float()
+            y[data["edge_index"].values] = torch.tensor(
+                data["cc"].values).float()
         return y
 
     def _torch_to_df_cc(self, data: torch.Tensor, day: str, t: int) -> pd.DataFrame:
@@ -289,9 +315,12 @@ class TorchRoadGraphMapping:
         tos = [t[1] for t in self.edges]
         df = pd.concat(
             [
-                pd.DataFrame(data=data[:, 0].cpu().numpy(), columns=["logit_green"]),
-                pd.DataFrame(data=data[:, 1].cpu().numpy(), columns=["logit_yellow"]),
-                pd.DataFrame(data=data[:, 2].cpu().numpy(), columns=["logit_red"]),
+                pd.DataFrame(data=data[:, 0].cpu().numpy(),
+                             columns=["logit_green"]),
+                pd.DataFrame(data=data[:, 1].cpu().numpy(),
+                             columns=["logit_yellow"]),
+                pd.DataFrame(data=data[:, 2].cpu().numpy(),
+                             columns=["logit_red"]),
             ],
             axis=1,
         )
@@ -311,11 +340,14 @@ class TorchRoadGraphMapping:
         -------
         Float tensor of size (number-of-supersegments,), containing etas and nan if undefined
         """
-        y = torch.full(size=(len(self.supersegments),), fill_value=float("nan"))
+        y = torch.full(size=(len(self.supersegments),),
+                       fill_value=float("nan"))
         if len(data) > 0:
             assert len(data) <= len(self.supersegments)
-            data["supersegment_index"] = [self.supersegments_d[identifier] for identifier in data["identifier"]]
-            y[data["supersegment_index"].values] = torch.tensor(data["eta"].values).float()
+            data["supersegment_index"] = [self.supersegments_d[identifier]
+                                          for identifier in data["identifier"]]
+            y[data["supersegment_index"].values] = torch.tensor(
+                data["eta"].values).float()
         return y
 
     def _torch_to_df_eta(self, data: torch.Tensor, day: str, t: int) -> pd.DataFrame:
