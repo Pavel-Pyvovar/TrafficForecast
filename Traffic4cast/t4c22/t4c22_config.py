@@ -117,14 +117,12 @@ def load_road_graph(basedir: Path, city: str, skip_supersegments: bool = True, e
     else:
         fn = basedir / "road_graph" / city / "road_graph_edges.parquet"
     df_edges = pq.read_table(fn).to_pandas()
-    edge_records = df_edges.to_dict("records")
     fn = basedir / "road_graph" / city / "road_graph_nodes.parquet"
     df_nodes = pq.read_table(fn).to_pandas()
     df_supersegments = None
     if not skip_supersegments:
         fn = basedir / "road_graph" / city / "road_graph_supersegments.parquet"
         df_supersegments = pq.read_table(fn).to_pandas()
-
     return df_edges, df_nodes, df_supersegments
 
 

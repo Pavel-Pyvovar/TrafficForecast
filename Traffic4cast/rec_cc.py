@@ -105,8 +105,8 @@ class RecLinear(nn.Module):
         self.lins.append(torch.nn.Linear(hidden_channels, out_channels))
 
         self.fc1 = nn.Linear(num_nodes, 256)
-        self.fc2 = nn.Linear(256, 32)  # 均值 向量
-        self.fc3 = nn.Linear(256, 32)  # 保准方差 向量
+        self.fc2 = nn.Linear(256, 32)  # mean vector
+        self.fc3 = nn.Linear(256, 32)  # standard deviation vector
         self.fc4 = nn.Linear(32, 256)
         self.fc5 = nn.Linear(256, num_nodes)
 
@@ -128,18 +128,18 @@ class RecLinear(nn.Module):
     def gelu(self, x):
         return 0.5 * x * (1 + F.tanh(np.sqrt(2 / np.pi) * (x + 0.044715 * torch.pow(x, 3))))
 
-    # 编码过程
+    # encoding process
     def encode(self, x):
         h = self.gelu(self.fc1(x))
         return self.fc2(h), self.fc3(h)
 
-    # 随机生成隐含向量
+    # Gaussian sampling
     def reparameterize(self, mu, log_var):
         std = torch.exp(log_var / 2)
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    # 解码过程
+    # decoding process
     def decode(self, z):
         h = self.gelu(self.fc4(z))
         h = self.fc5(h)
@@ -249,6 +249,7 @@ dataset = T4c22GeometricDataset(root=BASEDIR,
 
 test_dataset = T4c22GeometricDataset(root=BASEDIR,
                                      city=opt['city'],
+                                     # TODO: add features if needed
                                      edge_attributes=["speed_kph", "parsed_maxspeed", "length_meters",
                                                       "counter_distance", "importance", "highway", "oneway", ],
                                      split="test",
@@ -261,7 +262,6 @@ print("Dataset Size\t", len(dataset))
 print("Test Dataset Size\t", len(test_dataset))
 print("The statistics of training set are: Min [%d]\tMax [%d]\tMean [%.4f]\tStd[%.4f]" % (
     dataset.min_volume, dataset.max_volume, dataset.mean_volume, dataset.std))
-# print(dataset.get(0))
 
 # split dataset
 spl = int(((opt['split'] * len(dataset)) // 2) * 2)

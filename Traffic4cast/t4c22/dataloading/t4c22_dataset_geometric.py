@@ -9,6 +9,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 import pandas as pd
+import pickle
 from functools import partial
 from typing import Optional
 
@@ -83,7 +84,6 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
             city=city,
             edge_attributes=edge_attributes,
             root=root,
-            skip_supersegments=False,
             enriched=enriched,
             df_filter=partial(day_t_filter_to_df_filter,
                               filter=day_t_filter) if self.day_t_filter is not None else None,
@@ -95,23 +95,19 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
                 "test_idx"].max() + 1
             self.day_t = [("test", t) for t in range(num_tests)]
         else:
-            # TODO: discard slicing
             self.day_t = [(day, t) for day in cc_dates(self.root, city=city, split=self.split) for t in range(4, 96) if
-                          self.day_t_filter(day, t)][:32]
-        import pickle
+                          self.day_t_filter(day, t)]
+
         self.cluster_map = {}
-        # pickle is the dict, keys are list(range(20))
-        # values: (d, t, 1)
-        # len(values) vary
-        # did not underatnd the logic behind
-        with open("%s/%s.pkl" % (root, city), 'rb') as f:
+        with open(self.root / f"{city}.pkl", 'rb') as f:
             maps = pickle.load(f)
         for i in range(20):
             for day, t, _ in maps[i]:
-                self.cluster_map['%s-%d' % (day, t)] = i
+                self.cluster_map[f"{day}-{t}"] = i
         if (len(self.day_t) == 0):
             print("no sample")
             exit(0)
+
 
         self.edge_index = self.torch_road_graph_mapping.edge_index
         # self.edge_attr = self.normalize_attr()
@@ -128,21 +124,6 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
 
         self.min_volume, self.max_volume, self.mean_volume, self.std = city_statistics[
             self.city]
-
-    def get_statistics(self):
-        pass
-
-    '''
-    def get_edge_attr(self):
-    
-        # ["speed_kph", "parsed_maxspeed", "importance", "length_meters", "counter_distance"]
-        edge_attr = torch.zeros((self.torch_road_graph_mapping.edge_attr.shape[0]), 3)
-        
-        edge_attr[:, 0] = self.torch_road_graph_mapping.edge_attr[:, 3] / self.torch_road_graph_mapping.edge_attr[:, 0]
-        edge_attr[:, 0] = edge_attr[:, 0] / 1000 * 3600
-        
-        return edge_attr
-    '''
 
     def get_segment_edge(self):
 
@@ -189,7 +170,6 @@ class T4c22GeometricDataset(torch_geometric.data.Dataset):
         x = x - min_v
         x = x / (max_v - min_v)
         x = x * 2 - 1
-
         return x
 
     def zscore(self, x, mean, std):

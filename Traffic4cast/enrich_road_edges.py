@@ -1,3 +1,4 @@
+import argparse
 import os
 import pandas as pd
 import geopandas as gpd
@@ -13,8 +14,8 @@ from shapely.geometry import box, LineString
 import t4c22
 from t4c22.t4c22_config import load_basedir, load_road_graph
 
-root = load_basedir(fn="t4c22_config.json", pkg=t4c22)
-city = 'madrid'
+
+BASEDIR = load_basedir(fn="t4c22_config.json", pkg=t4c22)
 
 
 class DataEnricher():
@@ -287,5 +288,12 @@ class DataEnricher():
         print("Done writing")
 
 
-DE = DataEnricher(root, city)
-DE.run()
+parser = argparse.ArgumentParser()
+parser.add_argument('--city', type=str, default="london",
+                    help="london, melbourne, madrid")
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+    DE = DataEnricher(BASEDIR, args.city)
+    DE.run()
